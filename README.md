@@ -2,3 +2,21 @@
 A two-player version of asteroids, written using pygame.
 
 Competitive and coöperative mode are both supported.
+
+## Controls:
+
+### Player 1:
+`↑`   accelerate  
+`↓`   decelerate  
+`→`   rotate clockwise  
+`←`   rotate counterclockwise  
+`space` shoot  
+`m`   fire missile  
+
+### Player 2:
+`w`   accelerate  
+`s`   decelerate  
+`d`   rotate clockwise  
+`a`   rotate counterclockwise  
+`g`   shoot  
+`t`   fire missile  

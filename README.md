@@ -18,5 +18,5 @@ Competitive and coöperative mode are both supported.
 `s`   decelerate  
 `d`   rotate clockwise  
 `a`   rotate counterclockwise  
-`g`   shoot  
-`t`   fire missile  
+`z`   shoot  
+`x`   fire missile  

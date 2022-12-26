@@ -9,13 +9,13 @@ width = 1200
 max_frame_rate = 60
 
 n = 0
-max_asteroid_velocity = 0.2 / math.sqrt(2)
-max_asteroid_angular_velocity = 0.5 / math.sqrt(2)
+max_asteroid_velocity = 0.16
+max_asteroid_angular_velocity = 0.4
 
 screen = pygame.display.set_mode((width, height))
 
 pygame.display.set_caption("Space Invaders")
-icon = pygame.image.load("assets/spaceship_7.png")
+icon = pygame.image.load("assets/spaceship_cyan.png")
 pygame.display.set_icon(icon)
 
 
@@ -25,7 +25,7 @@ pygame.display.set_icon(icon)
 
 
 class Asteroid:
-    sprite = pygame.image.load("assets/asteroid.png")
+    sprite = 0
     x = 200
     y = 200
     theta = 0
@@ -34,12 +34,15 @@ class Asteroid:
     omega = 0
     is_valid = True
 
+    def __init__(self, sprite_path):
+        self.sprite = pygame.image.load(sprite_path)
+
 
 class Bullet:
-    sprite = pygame.image.load("assets/bullet_blue.png")
+    sprite = 0
     x = 0
     y = 0
-    v = 0.5
+    v = 0.8
     theta = 0
     is_valid = True
     origin = 0
@@ -71,16 +74,18 @@ class Missile:
 
     is_valid = True
 
-    def __init__(self, x, y, theta, target):
-        self.theta = theta
+    def __init__(self, source, target):
+        self.theta = source.theta
         self.target = target
-        self.x = x
-        self.y = y
+        self.x = source.x
+        self.y = source.y
+        self.v_x = source.v_x
+        self.v_y = source.v_y
 
 
 class Spaceship:
-    sprite = pygame.image.load("assets/spaceship_7.png")
-    bullet_sprite = pygame.image.load("assets/bullet_flame.png")
+    sprite = pygame.image.load("assets/spaceship_cyan.png")
+    bullet_sprite = pygame.image.load("assets/bullet_blue.png")
     name = ""
 
     x = 400
@@ -102,6 +107,8 @@ class Spaceship:
     hits = 0
     missile_hits = 0
 
+    is_valid = True
+
     max_fire = 4
     avg_fire_rate = 0.001
     capacity = max_fire
@@ -113,11 +120,21 @@ class Spaceship:
         self.x = x
         self.y = y
 
+    def __health__(self):
+        h = 1 - 0.2 * self.hits - 0.4 * self.collisions - 0.8 * self.missile_hits
+        if h >= 0:
+            return h
+        return 0
+
+    def __capacity__(self):
+        return self.capacity / self.max_fire
+
 
 def missile(missile, dt):
     prediction = 0
     y = missile.target.y + missile.target.v_y * dt * prediction
     x = missile.target.x + missile.target.v_x * dt * prediction
+
     t = math.degrees(math.atan2((missile.y - y), (missile.x - x)))
     u = missile.theta % 360
     m = abs((t + u - 90) % 360)
@@ -133,6 +150,7 @@ def missile(missile, dt):
     missile.omega += d_omega
 
     missile.theta += missile.omega * dt
+    missile.theta %= 360
     missile.x += missile.v_x * dt
     missile.y += missile.v_y * dt
 
@@ -172,6 +190,7 @@ def asteroid(asteroid, dt):
     asteroid.x += asteroid.v_x * dt
     asteroid.y += asteroid.v_y * dt
     asteroid.theta += asteroid.omega * dt
+    asteroid.theta %= 360
 
     if asteroid.x >= width or asteroid.x <= 0:
         if asteroid.x < 0:
@@ -193,7 +212,7 @@ def asteroid(asteroid, dt):
 
 def collide_missile_bullet(b, m):
     dist = abs(b.x - m.x) + abs(b.y - m.y)
-    if dist <= 0.9 * m.sprite.get_rect().width:
+    if dist <= 0.5 * (m.sprite.get_rect().width + m.sprite.get_rect().height):
         m.is_valid = False
         b.is_valid = False
 
@@ -206,11 +225,19 @@ def collide_missile_asteroid(a, m):
 
 
 def collide_missile_spaceship(m, s):
+    if not s.is_valid:
+        return
     dist = abs(m.x - s.x) + abs(m.y - s.y)
     if dist <= 0.9 * s.sprite.get_rect().width and s == m.target:
         m.is_valid = False
         s.missile_hits += 1
-        print("explosion!! - spaceship "+s.name)
+
+
+def collide_missile_missile(m2, m1):
+    dist = abs(m2.x - m1.x) + abs(m2.y - m1.y)
+    if dist <= m1.sprite.get_rect().width:
+        m1.is_valid = False
+        m2.is_valid = False
 
 
 def collide_bullet_asteroid(b, a):
@@ -221,24 +248,49 @@ def collide_bullet_asteroid(b, a):
 
 
 def collide_bullet_spaceship(b, p):
-    if b.origin == p:
+    if b.origin == p or not p.is_valid:
         return
     dist = abs(b.x - p.x) + abs(b.y - p.y)
     if dist <= 0.9 * p.sprite.get_rect().width:
         b.is_valid = False
         p.hits += 1
-        print("hit! - spaceship " + p.name)
 
 
 def collide_asteroid_spaceship(a, p):
+    if not p.is_valid:
+        return
     dist = abs(a.x - p.x) + abs(a.y - p.y)
-    if dist <= 0.9 * a.sprite.get_rect().width:
+    if dist <= a.sprite.get_rect().width:
         a.is_valid = False
         p.collisions += 1
-        print("collision! - spaceship " + p.name)
+
+
+def meter(t, x, y, fore_color, back_color, border_color):  # t is a real number between 0 and 1, x and y are centres
+    length = 80
+    width = 5
+    border = 2
+    l = length + 2 * border
+    w = width + 2 * border
+    pygame.draw.rect(screen,
+                     border_color,
+                     pygame.Rect((x - l / 2, y - w / 2), (l, w)),
+                     0)
+    l_filled = t * length
+    l_empty = (1 - t) * length
+    pygame.draw.rect(screen,
+                     fore_color,
+                     pygame.Rect((x - length / 2, y - width / 2), (l_filled, width)),
+                     0)
+    pygame.draw.rect(screen,
+                     back_color,
+                     pygame.Rect((x - length / 2 + l_filled, y - width / 2), (l_empty, width)),
+                     0)
 
 
 def spaceship(spaceship, dt):
+    if not spaceship.is_valid:
+        return
+
     d_v_x = (spaceship.a * -math.sin(math.radians(spaceship.theta)) - spaceship.bv * spaceship.v_x) * dt
     d_v_y = (spaceship.a * -math.cos(math.radians(spaceship.theta)) - spaceship.bv * spaceship.v_y) * dt
     d_omega = (spaceship.alpha - spaceship.bw * spaceship.omega) * dt
@@ -248,6 +300,7 @@ def spaceship(spaceship, dt):
     spaceship.omega += d_omega
 
     spaceship.theta += spaceship.omega * dt
+    spaceship.theta %= 360
     spaceship.x += spaceship.v_x * dt
     spaceship.y += spaceship.v_y * dt
 
@@ -275,19 +328,22 @@ def spaceship(spaceship, dt):
 
 c = pygame.time.Clock()
 
-p = Spaceship("P", "assets/spaceship_3.png", width / 4, height / 2)
-q = Spaceship("Q", "assets/spaceship_2.png", 3 * width / 4, height / 2)
+p = Spaceship("P", "assets/spaceship_cyan.png", width / 4, height / 2)
+q = Spaceship("Q", "assets/spaceship_orange.png", 3 * width / 4, height / 2)
 
 q.bullet_sprite = pygame.image.load("assets/bullet_blue.png")
 asteroids = list()
 bullets = list()
 missiles = list()
 for i in range(n):
-    a = Asteroid()
+    r = (random.random() * 1000) % 3
+    a = Asteroid("assets/asteroid_" + ("grey" if r <= 1 else ("blue" if r <= 2 else "red")) + ".png")
     a.x = width / 2
     a.y = ((i + 0.5) / n) * height
-    a.v_x = (2 * random.random() - 1) * max_asteroid_velocity
-    a.v_y = (2 * random.random() - 1) * max_asteroid_velocity
+    v = (2 * random.random() - 1) * max_asteroid_velocity
+    theta = random.random() * 360
+    a.v_x = max_asteroid_velocity * math.sin(math.radians(theta))
+    a.v_y = max_asteroid_velocity * math.cos(math.radians(theta))
     a.omega = (2 * random.random() - 1) * max_asteroid_angular_velocity
     asteroids.append(a)
 
@@ -297,58 +353,68 @@ while running:
     dt = c.tick(max_frame_rate)
 
     for event in pygame.event.get():
+
         if event.type == pygame.QUIT:
             running = False
 
         if event.type == pygame.KEYUP:
-            if event.key == pygame.K_LEFT or event.key == pygame.K_RIGHT:
-                p.alpha = 0
-            elif event.key == pygame.K_UP or event.key == pygame.K_DOWN:
-                p.a = 0
-            elif event.key == pygame.K_a or event.key == pygame.K_d:
-                q.alpha = 0
-            elif event.key == pygame.K_w or event.key == pygame.K_s:
-                q.a = 0
+            if p.is_valid:
+                if event.key == pygame.K_j or event.key == pygame.K_l:
+                    p.alpha = 0
+                elif event.key == pygame.K_i or event.key == pygame.K_k:
+                    p.a = 0
+            if q.is_valid:
+                if event.key == pygame.K_a or event.key == pygame.K_d:
+                    q.alpha = 0
+                elif event.key == pygame.K_w or event.key == pygame.K_s:
+                    q.a = 0
 
         if event.type == pygame.KEYDOWN:
-            if event.key == pygame.K_LEFT:
-                p.alpha = p.angular_sensitivity
-            elif event.key == pygame.K_RIGHT:
-                p.alpha = -p.angular_sensitivity
-            elif event.key == pygame.K_UP:
-                p.a = p.linear_sensitivity
-            elif event.key == pygame.K_DOWN:
-                p.a = -p.linear_sensitivity
-            elif event.key == pygame.K_SPACE:
-                if p.capacity > 1:
-                    bullets.append(Bullet(p, p.bullet_sprite, p.theta, p.x, p.y))
-                    p.capacity -= 1
-            elif event.key == pygame.K_m:
-                if p.missiles > 0:
-                    missiles.append(Missile(p.x, p.y, p.theta, q))
-                    p.missiles -= 1
-            elif event.key == pygame.K_a:
-                q.alpha = q.angular_sensitivity
-            elif event.key == pygame.K_d:
-                q.alpha = -q.angular_sensitivity
-            elif event.key == pygame.K_w:
-                q.a = q.linear_sensitivity
-            elif event.key == pygame.K_s:
-                q.a = -q.linear_sensitivity
-            elif event.key == pygame.K_g:
-                if q.capacity > 1:
-                    bullets.append(Bullet(q, q.bullet_sprite, q.theta, q.x, q.y))
-                    q.capacity -= 1
-            elif event.key == pygame.K_t:
-                if q.missiles > 0:
-                    missiles.append(Missile(q.x, q.y, q.theta, p))
-                    q.missiles -= 1
+            if p.is_valid:
+                if event.key == pygame.K_j:
+                    p.alpha = p.angular_sensitivity
+                elif event.key == pygame.K_l:
+                    p.alpha = -p.angular_sensitivity
+                elif event.key == pygame.K_i:
+                    p.a = p.linear_sensitivity
+                elif event.key == pygame.K_k:
+                    p.a = -p.linear_sensitivity
+                elif event.key == pygame.K_m:
+                    if p.capacity > 1:
+                        bullets.append(Bullet(p, p.bullet_sprite, p.theta, p.x, p.y))
+                        p.capacity -= 1
+                elif event.key == pygame.K_COMMA and p.capacity == 4:
+                    if p.missiles > 0:
+                        missiles.append(Missile(p, q))
+                        p.missiles -= 1
+                        p.capacity -= 4
+            if q.is_valid:
+                if event.key == pygame.K_a:
+                    q.alpha = q.angular_sensitivity
+                elif event.key == pygame.K_d:
+                    q.alpha = -q.angular_sensitivity
+                elif event.key == pygame.K_w:
+                    q.a = q.linear_sensitivity
+                elif event.key == pygame.K_s:
+                    q.a = -q.linear_sensitivity
+                elif event.key == pygame.K_z:
+                    if q.capacity > 1:
+                        bullets.append(Bullet(q, q.bullet_sprite, q.theta, q.x, q.y))
+                        q.capacity -= 1
+                elif event.key == pygame.K_x:
+                    if q.missiles > 0 and q.capacity == 4:
+                        missiles.append(Missile(q, p))
+                        q.missiles -= 1
+                        q.capacity -= 4
 
     screen.fill((0, 0, 0))
 
     spaceship(p, dt)
     spaceship(q, dt)
     for m in missiles:
+        for m_ in missiles:
+            if m_ != m:
+                collide_missile_missile(m, m_)
         for b in bullets:
             collide_missile_bullet(b, m)
         for a in asteroids:
@@ -373,6 +439,16 @@ while running:
     for a in asteroids:
         for b in bullets:
             collide_bullet_asteroid(b, a)
+    if p.__health__() == 0:
+        p.is_valid = False
+    if q.__health__() == 0:
+        q.is_valid = False
+
+    x_offset = 60
+    meter(p.__health__(), x_offset, 20, (0, 255, 0), (255, 0, 0), (160, 160, 160))
+    meter(p.__capacity__(), x_offset, 40, (255, 255, 0), (96, 96, 0), (160, 160, 160))
+    meter(q.__health__(), width - x_offset, 20, (0, 255, 0), (255, 0, 0), (160, 160, 160))
+    meter(q.__capacity__(), width - x_offset, 40, (255, 255, 0), (96, 96, 0), (160, 160, 160))
 
     pygame.display.update()
     pass

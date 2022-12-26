@@ -8,7 +8,7 @@ height = 720
 width = 1200
 max_frame_rate = 60
 
-n = 0
+n = 16
 max_asteroid_velocity = 0.16
 max_asteroid_angular_velocity = 0.4
 
@@ -18,14 +18,17 @@ pygame.display.set_caption("Space Invaders")
 icon = pygame.image.load("assets/spaceship_cyan.png")
 pygame.display.set_icon(icon)
 
-
 # all distances are in pixels
 # all angles are in degrees
 # all time is in milliseconds
 
+asteroid_colors = ["grey", "blue", "red"]
+
 
 class Asteroid:
+    size = 2
     sprite = 0
+    color = -1
     x = 200
     y = 200
     theta = 0
@@ -33,9 +36,11 @@ class Asteroid:
     v_y = 0
     omega = 0
     is_valid = True
+    to_split = False
 
-    def __init__(self, sprite_path):
+    def __init__(self, sprite_path, color):
         self.sprite = pygame.image.load(sprite_path)
+        self.color = color
 
 
 class Bullet:
@@ -103,7 +108,8 @@ class Spaceship:
     bv = linear_sensitivity / terminal_linear_velocity
     bw = angular_sensitivity / terminal_angular_velocity
 
-    collisions = 0
+    collisions_large = 0
+    collisions_small = 0
     hits = 0
     missile_hits = 0
 
@@ -121,13 +127,13 @@ class Spaceship:
         self.y = y
 
     def __health__(self):
-        h = 1 - 0.2 * self.hits - 0.4 * self.collisions - 0.8 * self.missile_hits
+        h = 1 - 0.2 * self.hits - 0.4 * self.collisions_large - 0.2 * self.collisions_small - 0.8 * self.missile_hits
         if h >= 0:
             return h
         return 0
 
     def __capacity__(self):
-        return self.capacity / self.max_fire
+        return self.capacity / self.max_fire if self.__health__() > 0 else 0
 
 
 def missile(missile, dt):
@@ -222,6 +228,7 @@ def collide_missile_asteroid(a, m):
     if dist <= 0.9 * a.sprite.get_rect().width:
         a.is_valid = False
         m.is_valid = False
+        a.to_split = True
 
 
 def collide_missile_spaceship(m, s):
@@ -245,6 +252,8 @@ def collide_bullet_asteroid(b, a):
     if dist <= 0.9 * a.sprite.get_rect().width:
         b.is_valid = False
         a.is_valid = False
+        if a.size == 2:
+            a.to_split = True
 
 
 def collide_bullet_spaceship(b, p):
@@ -262,7 +271,33 @@ def collide_asteroid_spaceship(a, p):
     dist = abs(a.x - p.x) + abs(a.y - p.y)
     if dist <= a.sprite.get_rect().width:
         a.is_valid = False
-        p.collisions += 1
+        if a.size == 2:
+            p.collisions_large += 1
+        elif a.size == 1:
+            p.collisions_small += 1
+
+
+def breakup(asteroid, v):
+    angle = 30
+    x = list()
+    a1 = Asteroid("assets/asteroid_" + asteroid_colors[int(asteroid.color)] + "_small.png", asteroid.color)
+    a2 = Asteroid("assets/asteroid_" + asteroid_colors[int(asteroid.color)] + "_small.png", asteroid.color)
+    a1.x = asteroid.x
+    a2.x = asteroid.x
+    a1.y = asteroid.y
+    a2.y = asteroid.y
+    theta = math.degrees(math.atan2(asteroid.v_y, asteroid.v_x))
+    a1.v_x = v * math.cos(math.radians(theta+angle))
+    a2.v_x = v * math.cos(math.radians(theta-angle))
+    a1.v_y = v * math.sin(math.radians(theta+angle))
+    a2.v_y = v * math.sin(math.radians(theta-angle))
+    a1.color = asteroid.color
+    a2.color = asteroid.color
+    a1.size = 1
+    a2.size = 1
+    x.append(a1)
+    x.append(a2)
+    return x
 
 
 def meter(t, x, y, fore_color, back_color, border_color):  # t is a real number between 0 and 1, x and y are centres
@@ -328,22 +363,22 @@ def spaceship(spaceship, dt):
 
 c = pygame.time.Clock()
 
-p = Spaceship("P", "assets/spaceship_cyan.png", width / 4, height / 2)
-q = Spaceship("Q", "assets/spaceship_orange.png", 3 * width / 4, height / 2)
+p = Spaceship("P", "assets/spaceship_cyan.png", 3*width / 4, height / 2)
+q = Spaceship("Q", "assets/spaceship_orange.png", width / 4, height / 2)
 
-q.bullet_sprite = pygame.image.load("assets/bullet_blue.png")
+q.bullet_sprite = pygame.image.load("assets/bullet_red.png")
 asteroids = list()
 bullets = list()
 missiles = list()
 for i in range(n):
-    r = (random.random() * 1000) % 3
-    a = Asteroid("assets/asteroid_" + ("grey" if r <= 1 else ("blue" if r <= 2 else "red")) + ".png")
+    color = (random.random() * 1000) % 3
+    a = Asteroid("assets/asteroid_" + asteroid_colors[int(color)] + ".png", color)
     a.x = width / 2
     a.y = ((i + 0.5) / n) * height
     v = (2 * random.random() - 1) * max_asteroid_velocity
     theta = random.random() * 360
-    a.v_x = max_asteroid_velocity * math.sin(math.radians(theta))
-    a.v_y = max_asteroid_velocity * math.cos(math.radians(theta))
+    a.v_x = v * math.sin(math.radians(theta))
+    a.v_y = v * math.cos(math.radians(theta))
     a.omega = (2 * random.random() - 1) * max_asteroid_angular_velocity
     asteroids.append(a)
 
@@ -409,8 +444,19 @@ while running:
 
     screen.fill((0, 0, 0))
 
+    # movement
     spaceship(p, dt)
     spaceship(q, dt)
+    for m in missiles:
+        missile(m, dt)
+    for a in asteroids:
+        asteroid(a, dt)
+        if a.color == "":
+            print("error")
+    for b in bullets:
+        bullet(b, dt)
+
+    # collision checking
     for m in missiles:
         for m_ in missiles:
             if m_ != m:
@@ -421,34 +467,41 @@ while running:
             collide_missile_asteroid(a, m)
         collide_missile_spaceship(m, p)
         collide_missile_spaceship(m, q)
-        if not m.is_valid:
-            missiles.remove(m)
-        missile(m, dt)
-    for a in asteroids:
-        collide_asteroid_spaceship(a, p)
-        collide_asteroid_spaceship(a, q)
-        if not a.is_valid:
-            asteroids.remove(a)
-        asteroid(a, dt)
-    for b in bullets:
-        collide_bullet_spaceship(b, p)
-        collide_bullet_spaceship(b, q)
-        if not b.is_valid:
-            bullets.remove(b)
-        bullet(b, dt)
+
     for a in asteroids:
         for b in bullets:
             collide_bullet_asteroid(b, a)
+        collide_asteroid_spaceship(a, p)
+        collide_asteroid_spaceship(a, q)
+
+    for b in bullets:
+        collide_bullet_spaceship(b, p)
+        collide_bullet_spaceship(b, q)
+
+    # consequences
+    for m in missiles:
+        if not m.is_valid:
+            missiles.remove(m)
+    for b in bullets:
+        if not b.is_valid:
+            bullets.remove(b)
+    for a in asteroids:
+        if not a.is_valid:
+            if a.to_split:
+                st = breakup(a, max_asteroid_velocity)
+                for s in st:
+                    asteroids.append(s)
+            asteroids.remove(a)
     if p.__health__() == 0:
         p.is_valid = False
     if q.__health__() == 0:
         q.is_valid = False
 
     x_offset = 60
-    meter(p.__health__(), x_offset, 20, (0, 255, 0), (255, 0, 0), (160, 160, 160))
-    meter(p.__capacity__(), x_offset, 40, (255, 255, 0), (96, 96, 0), (160, 160, 160))
-    meter(q.__health__(), width - x_offset, 20, (0, 255, 0), (255, 0, 0), (160, 160, 160))
-    meter(q.__capacity__(), width - x_offset, 40, (255, 255, 0), (96, 96, 0), (160, 160, 160))
+    meter(p.__health__(), width - x_offset, 20, (0, 255, 0), (255, 0, 0), (160, 160, 160))
+    meter(p.__capacity__(), width - x_offset, 40, (255, 255, 0), (96, 96, 0), (160, 160, 160))
+    meter(q.__health__(), x_offset, 20, (0, 255, 0), (255, 0, 0), (160, 160, 160))
+    meter(q.__capacity__(), x_offset, 40, (255, 255, 0), (96, 96, 0), (160, 160, 160))
 
     pygame.display.update()
     pass

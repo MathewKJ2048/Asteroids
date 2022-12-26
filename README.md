@@ -6,12 +6,12 @@ Competitive and coöperative mode are both supported.
 ## Controls:
 
 ### Player 1:
-`↑`   accelerate  
-`↓`   decelerate  
-`→`   rotate clockwise  
-`←`   rotate counterclockwise  
-`space` shoot  
-`m`   fire missile  
+`i`   accelerate  
+`k`   decelerate  
+`l`   rotate clockwise  
+`j`   rotate counterclockwise  
+`m`   shoot  
+`,`   fire missile  
 
 ### Player 2:
 `w`   accelerate  
